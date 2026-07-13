@@ -1,0 +1,17 @@
+name: mini_sweagent-v1.0.0
+install_cmd: bash setup.sh
+run_cmd: >-
+  mini-sweagent-run-task {problem_statement_path}
+  --config=swebench.yaml
+  --environment-class=local
+  --config=model.model_name={model}
+  --output=/logs/mini_sweagent-v1.0.0/trajectory.json
+  --agent-class=default
+  --exit-immediately
+  --yolo
+final_output: /logs/mini_sweagent-v1.0.0
+defaults:
+  model:
+    type: str
+    required: true
+    description: Public model-library registry key, for example openai/gpt-4o
