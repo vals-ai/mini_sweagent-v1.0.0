@@ -4,9 +4,10 @@ Valkyrie packaging release v1.0.0 of [Mini SWE-agent](https://github.com/SWE-age
 
 ## Configuration
 
-- Model: required public `model-library==0.1.25` key passed with `--model`, for example `openai/gpt-4o`
+- Model: required public `model-library==0.1.26` key passed with `--model`, for example `openai/gpt-4o`
 - Secrets: map the matching provider variable to an AWS secret name with `-s ENV_VAR AWS_SECRET_NAME`
 - Supported credentials: `OPENAI_API_KEY` for OpenAI models and `ANTHROPIC_API_KEY` for Anthropic models
+- Gateway: set both `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_API_KEY`; partial configuration is rejected
 - Valkyrie kwargs: none
 - Final output: `/logs/mini_sweagent-v1.0.0`
 
@@ -46,7 +47,7 @@ valkyrie run start \
 ## Known Limitations
 
 - Setup requires a Debian-based benchmark image with `apt-get`.
-- Model support depends on `model-library==0.1.25` and the matching provider credential.
+- Model support depends on `model-library==0.1.26` and the matching provider credential.
 
 ## License
 
