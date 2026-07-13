@@ -11,7 +11,7 @@ curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 cd "$SCRIPT_DIR"
-uv sync --locked
+uv sync --locked --no-dev
 
 mkdir -p /root/.config/mini-swe-agent /logs/mini_sweagent-v1.0.0
 printf '%s\n' 'MSWEA_CONFIGURED=true' > /root/.config/mini-swe-agent/.env

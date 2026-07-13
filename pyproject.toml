@@ -8,7 +8,7 @@ name = "mini-swe-agent"
 dynamic = ["version"]
 description = "Nano SWE Agent - A simple AI software engineering agent"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 license = {file = "LICENSE.md"}
 keywords = ["nlp", "agents", "code"]
 authors = [
@@ -35,7 +35,7 @@ dependencies = [
     "requests",
     "jinja2",
     "pydantic >= 2.0",  # v2 required for safe mutable default arguments
-    "litellm == 1.81.16",  # pin specific version before vulnerability. TODO: remove litellm entirely
+    "litellm == 1.84.0",
     "tenacity",
     "rich",
     "python-dotenv",
