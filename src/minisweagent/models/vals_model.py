@@ -8,6 +8,7 @@ from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
+from model_library import model_library_settings
 from model_library.base.base import LLMConfig
 from model_library.base.input import InputItem, SystemInput, TextInput, ToolBody, ToolCall, ToolDefinition, ToolResult
 from model_library.registry_utils import get_registry_model
@@ -73,6 +74,16 @@ class ValsModelConfig(BaseModel):
 class ValsModel:
     def __init__(self, *, config_class: Callable = ValsModelConfig, **kwargs):
         self.config = config_class(**kwargs)
+
+        gateway_url = model_library_settings.get("MODEL_GATEWAY_URL", None)
+        gateway_api_key = model_library_settings.get("MODEL_GATEWAY_API_KEY", None)
+        gateway_values = (gateway_url, gateway_api_key)
+        if any(value is not None for value in gateway_values) and not all(
+            isinstance(value, str) and value.strip() for value in gateway_values
+        ):
+            raise ValueError(
+                "MODEL_GATEWAY_URL and MODEL_GATEWAY_API_KEY must be configured together with non-empty values"
+            )
 
         self._event_loop_manager = EventLoopManager()
 
