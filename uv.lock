@@ -1593,7 +1593,7 @@ requires-dist = [
     { name = "mkdocs-redirects", marker = "extra == 'dev'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.18" },
     { name = "modal", marker = "extra == 'modal'" },
-    { name = "model-library", specifier = "==0.1.26" },
+    { name = "model-library", specifier = "==0.1.27" },
     { name = "openai", specifier = "!=1.100.0,!=1.100.1" },
     { name = "platformdirs" },
     { name = "portkey-ai", marker = "extra == 'dev'" },
@@ -1826,7 +1826,7 @@ wheels = [
 
 [[package]]
 name = "model-library"
-version = "0.1.26"
+version = "0.1.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ai21" },
@@ -1850,9 +1850,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "xai-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/33/3a1dc68f6a5420e4788bf005817f32b5479985abdd2217562b5be096fe1e/model_library-0.1.26.tar.gz", hash = "sha256:527f7823939b522cdeea78fc0daa0dbbeb54293ea8cf7027e1302a9511ffc1ca", size = 675108, upload-time = "2026-06-25T04:46:32.556Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/4a/05015f40d03b07a3a296dac159c69e1c52de9404fbf8e7dc26da70547ec1/model_library-0.1.27.tar.gz", hash = "sha256:3779fa7c77eef9bb72b223349b755bf5b4e152a6d61fea17a6235a602cd45a56", size = 796842, upload-time = "2026-07-15T18:43:53.178Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/f0/f342f2312311204784394056b21c3cb2d7f2f581bcf70c86d90e586f0cab/model_library-0.1.26-py3-none-any.whl", hash = "sha256:1e540eb4bd6e011c9b2085851d4759f575f0b8cb03216155e8156ec73476c057", size = 284169, upload-time = "2026-06-25T04:46:31.026Z" },
+    { url = "https://files.pythonhosted.org/packages/73/9a/705be9490d6a7202cf5ac1488b6031f33c5c020e112c0eccf89b2d12cef1/model_library-0.1.27-py3-none-any.whl", hash = "sha256:687d93e7f9ca0a8c1eb10e5bbdcdd2e61ab9d2e597596a0089902089b7f27ed3", size = 337238, upload-time = "2026-07-15T18:43:51.536Z" },
 ]
 
 [[package]]
