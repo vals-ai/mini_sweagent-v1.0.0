@@ -1593,7 +1593,7 @@ requires-dist = [
     { name = "mkdocs-redirects", marker = "extra == 'dev'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.18" },
     { name = "modal", marker = "extra == 'modal'" },
-    { name = "model-library", specifier = "==0.1.27" },
+    { name = "model-library", specifier = ">=0.1.28" },
     { name = "openai", specifier = "!=1.100.0,!=1.100.1" },
     { name = "platformdirs" },
     { name = "portkey-ai", marker = "extra == 'dev'" },
@@ -1826,7 +1826,7 @@ wheels = [
 
 [[package]]
 name = "model-library"
-version = "0.1.27"
+version = "0.1.28"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ai21" },
@@ -1850,9 +1850,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "xai-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/4a/05015f40d03b07a3a296dac159c69e1c52de9404fbf8e7dc26da70547ec1/model_library-0.1.27.tar.gz", hash = "sha256:3779fa7c77eef9bb72b223349b755bf5b4e152a6d61fea17a6235a602cd45a56", size = 796842, upload-time = "2026-07-15T18:43:53.178Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/e5/c7598b8ee6d8ca2aab87f924ade5821ab9251937464029387a8e5e12aa1f/model_library-0.1.28.tar.gz", hash = "sha256:9f43a31ce4475e619907c953f204b9353bf73aa84d94638420d188050096357a", size = 833434, upload-time = "2026-07-20T23:14:22.775Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/9a/705be9490d6a7202cf5ac1488b6031f33c5c020e112c0eccf89b2d12cef1/model_library-0.1.27-py3-none-any.whl", hash = "sha256:687d93e7f9ca0a8c1eb10e5bbdcdd2e61ab9d2e597596a0089902089b7f27ed3", size = 337238, upload-time = "2026-07-15T18:43:51.536Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/81/38811681a4e05b46926d1e2327c3db2e980a880fd3055d86411157843291/model_library-0.1.28-py3-none-any.whl", hash = "sha256:e102c93e1e29925f0a4950eadf0e005a5a251470b650496af50bbbe0362017da", size = 348587, upload-time = "2026-07-20T23:14:21.15Z" },
 ]
 
 [[package]]
