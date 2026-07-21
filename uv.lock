@@ -1593,7 +1593,7 @@ requires-dist = [
     { name = "mkdocs-redirects", marker = "extra == 'dev'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.18" },
     { name = "modal", marker = "extra == 'modal'" },
-    { name = "model-library", specifier = ">=0.1.28" },
+    { name = "model-library", specifier = "==0.1.28" },
     { name = "openai", specifier = "!=1.100.0,!=1.100.1" },
     { name = "platformdirs" },
     { name = "portkey-ai", marker = "extra == 'dev'" },
