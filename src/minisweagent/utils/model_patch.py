@@ -36,6 +36,7 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)(?:github_pat_|gh[pousr]_|xox[baprs]-|sk-)[a-z0-9_-]{16,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
 )
+REGULAR_GIT_MODES = frozenset({"100644", "100755"})
 
 
 def _run(repo: Path, *args: str, env: dict[str, str] | None = None) -> bytes:
@@ -675,6 +676,16 @@ def _validate_and_measure(patch: bytes) -> tuple[int, int, int]:
         raise ValueError("model patch is not valid UTF-8") from exc
     if _contains_unredacted_secret(text):
         raise ValueError("potential unredacted credential or secret in model patch")
+    for line in text.splitlines():
+        mode: str | None = None
+        if line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ")):
+            mode = line.rsplit(" ", 1)[-1]
+        elif line.startswith("index "):
+            fields = line.split()
+            if len(fields) == 3:
+                mode = fields[-1]
+        if mode is not None and mode not in REGULAR_GIT_MODES:
+            raise ValueError(f"model patch entries must use a regular file mode, got {mode!r}")
     starts = [match.start() for match in re.finditer(r"(?m)^diff --git ", text)]
     if not starts or starts[0] != 0:
         raise ValueError("model patch must contain only complete Git diffs")
