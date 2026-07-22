@@ -1,6 +1,6 @@
 name: mini_sweagent-v1.0.0
 install_cmd: bash setup.sh
-run_cmd: bash run.sh {problem_statement_path} {task_id} {model}
+run_cmd: bash run.sh "{problem_statement_path}" "{task_id}" "{model}"
 final_output: /logs/mini_sweagent-v1.0.0
 output_artifacts:
   - path: atif/trajectory.json
