@@ -21,7 +21,7 @@ status=1
 export_optional_artifacts() {
   if [[ -x "$model_patch_python" && -f "$model_patch_helper" && -f "$model_patch_base" ]]; then
     "$model_patch_python" "$model_patch_helper" export "$repo" "$model_patch_dir" \
-      "$model_patch_base" --native-source "$log_dir/trajectory.json" || \
+      "$model_patch_base" || \
       echo "[agent-wrapper] Model Patch export failed" >&2
   else
     echo "[agent-wrapper] Model Patch export unavailable" >&2
