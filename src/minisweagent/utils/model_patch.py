@@ -1,9 +1,11 @@
 import argparse
+import ast
 import contextlib
 import hashlib
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -18,19 +20,30 @@ MAX_METADATA_BYTES = 64 * 1024
 MAX_TRAJECTORY_BYTES = 10 * 1024 * 1024
 CHUNK_BYTES = 64 * 1024
 BASE_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-REDACTED_VALUES = frozenset({"[REDACTED]", "<REDACTED>", "{REDACTED}", "REDACTED", "***", "XXXXX"})
+REDACTED_VALUES = frozenset({"[REDACTED]", "<REDACTED>", "REDACTED", "***", "xxxxx"})
 CREDENTIAL_ASSIGNMENT_PATTERN = re.compile(
-    r"(?ix)(?:[\"']?[a-z0-9_.-]*(?:api[_-]?key|secret(?:[_-]?(?:access[_-]?key|key))?|"
-    r"access[_-]?token|token|password|passwd|private[_-]?key|credential)"
-    r"[a-z0-9_.-]*[\"']?)\s*[:=]\s*"
-    r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
+    r"(?i)(?<![A-Za-z0-9])"
+    + r"[\"']?(?P<key>[A-Za-z0-9_.-]*(?:api[_-]?key|apikey|access[_-]?token|accesstoken|"
+    + r"authorization|auth|client[_-]?secret|password|private[_-]?key|secret|token)[A-Za-z0-9_.-]*)[\"']?"
+    + r"\s*[:=]\s*(?P<value>(?:(?:bearer|basic)\s+)?"
+    + r"(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s,};])+)"
 )
-AUTHORIZATION_PATTERN = re.compile(
-    r"(?im)[\"']?(?:proxy[_-]?)?authorization[\"']?\s*[:=]\s*"
-    r"(?:(?:basic|bearer)\s+)?"
-    r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
+URL_CREDENTIAL_PATTERN = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@]+:([^@\s/]+)@")
+NON_SECRET_TOKEN_KEYS = frozenset(
+    {
+        "cachedtokens",
+        "completiontokens",
+        "inputtokens",
+        "maxtokens",
+        "numtokens",
+        "outputtokens",
+        "prompttokens",
+        "reasoningtokens",
+        "tokencount",
+        "tokenids",
+        "totaltokens",
+    }
 )
-URL_CREDENTIAL_PATTERN = re.compile(r"(?i)[a-z][a-z0-9+.-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@")
 SECRET_PATTERNS = (
     re.compile(r"(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"(?i)(?:github_pat_|gh[pousr]_|xox[baprs]-|sk-)[a-z0-9_-]{16,}"),
@@ -454,39 +467,148 @@ def _validate_relative_path(relative: str) -> None:
         raise ValueError(f"unsafe diff path: {relative!r}")
 
 
-def _header_path(line: str, prefix: str, expected_side: str) -> str | None:
-    if not line.startswith(prefix):
-        raise ValueError("malformed unified diff header")
-    field = line[len(prefix) :].split("\t", 1)[0]
-    if field == "/dev/null":
-        return None
-    if field.startswith('"') or not field.startswith(f"{expected_side}/"):
-        raise ValueError("unsafe or uncertain diff header path")
-    relative = field[2:]
-    _validate_relative_path(relative)
-    return relative
+def _safe_diff_path(value: str, *, prefixes: tuple[str, ...] = ()) -> bool:
+    if not value or "\0" in value or value.startswith("/"):
+        return False
+    if prefixes:
+        prefix = next((candidate for candidate in prefixes if value.startswith(candidate)), None)
+        if prefix is None:
+            return False
+        value = value[len(prefix) :]
+    parts = value.split("/")
+    return all(part not in {"", ".", ".."} for part in parts) and not PurePosixPath(value).is_absolute()
 
 
-def _is_redacted(value: str) -> bool:
-    normalized = value.strip().strip("\"'").upper()
-    for scheme in ("BASIC ", "BEARER "):
-        if normalized.startswith(scheme):
-            normalized = normalized.removeprefix(scheme).strip()
-            break
-    return normalized in REDACTED_VALUES
+def _decode_git_path(value: str) -> str:
+    if not value.startswith('"'):
+        return value
+    try:
+        decoded = ast.literal_eval(value)
+    except (SyntaxError, ValueError) as error:
+        raise ValueError(f"invalid quoted patch path: {value!r}") from error
+    if not isinstance(decoded, str):
+        raise ValueError(f"invalid quoted patch path: {value!r}")
+    return decoded
+
+
+def _header_path(value: str) -> str:
+    if not value.startswith('"'):
+        return value.split("\t", 1)[0]
+    try:
+        parts = shlex.split(value, posix=False)
+    except ValueError as error:
+        raise ValueError(f"invalid quoted patch path: {value!r}") from error
+    if len(parts) != 1:
+        raise ValueError(f"ambiguous patch path: {value!r}")
+    return _decode_git_path(parts[0])
+
+
+def _diff_header_paths(line: str) -> tuple[str, str]:
+    try:
+        parts = shlex.split(line, posix=False)
+    except ValueError as error:
+        raise ValueError(f"invalid diff header: {line!r}") from error
+    if len(parts) == 4:
+        return _decode_git_path(parts[2]), _decode_git_path(parts[3])
+
+    payload = line.removeprefix("diff --git ")
+    if '"' in payload:
+        raise ValueError(f"invalid diff header: {line!r}")
+    candidates: list[tuple[str, str]] = []
+    offset = 0
+    while (delimiter := payload.find(" b/", offset)) != -1:
+        old_path = payload[:delimiter]
+        new_path = payload[delimiter + 1 :]
+        if _safe_diff_path(old_path, prefixes=("a/",)) and _safe_diff_path(new_path, prefixes=("b/",)):
+            candidates.append((old_path, new_path))
+        offset = delimiter + 1
+    if len(candidates) != 1:
+        raise ValueError(f"ambiguous diff header: {line!r}")
+    return candidates[0]
+
+
+def _validate_patch_paths(lines: list[str]) -> int:
+    file_count = 0
+    entry_open = False
+    regular_mode_proven = False
+    for line in lines:
+        if line.startswith("diff --git "):
+            if entry_open and not regular_mode_proven:
+                raise ValueError("model patch entries must prove a regular file mode")
+            old_path, new_path = _diff_header_paths(line)
+            if not _safe_diff_path(old_path, prefixes=("a/",)) or not _safe_diff_path(new_path, prefixes=("b/",)):
+                raise ValueError(f"unsafe path in diff header: {line!r}")
+            file_count += 1
+            entry_open = True
+            regular_mode_proven = False
+        elif line.startswith(("--- ", "+++ ")):
+            path = _header_path(line[4:])
+            if path != "/dev/null" and not _safe_diff_path(path, prefixes=("a/", "b/")):
+                raise ValueError(f"unsafe path in patch header: {path!r}")
+        elif line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ")):
+            mode = line.rsplit(" ", 1)[-1]
+            if mode not in REGULAR_GIT_MODES:
+                raise ValueError(f"model patch entries must be regular files, got mode {mode!r}")
+            regular_mode_proven = True
+        elif line.startswith("index "):
+            parts = line.split()
+            if len(parts) == 3 and parts[-1] not in REGULAR_GIT_MODES:
+                raise ValueError(f"model patch entries must be regular files, got mode {parts[-1]!r}")
+            if len(parts) == 3:
+                regular_mode_proven = True
+        elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
+            path = _decode_git_path(line.split(" ", 2)[2])
+            if not _safe_diff_path(path):
+                raise ValueError(f"unsafe path in patch metadata: {path!r}")
+
+    if file_count == 0:
+        raise ValueError("model patch contains no file diff")
+    if entry_open and not regular_mode_proven:
+        raise ValueError("model patch entries must prove a regular file mode")
+    return file_count
+
+
+def _count_patch_changes(lines: list[str]) -> tuple[int, int]:
+    additions = 0
+    deletions = 0
+    in_hunk = False
+    for line in lines:
+        if line.startswith("diff --git "):
+            in_hunk = False
+        elif line.startswith("@@ "):
+            in_hunk = True
+        elif in_hunk and line.startswith("+"):
+            additions += 1
+        elif in_hunk and line.startswith("-"):
+            deletions += 1
+    return additions, deletions
+
+
+def _is_redacted(raw_value: str) -> bool:
+    value = raw_value.strip().rstrip(",;)}")
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    if value in REDACTED_VALUES:
+        return True
+    authorization = value.split(maxsplit=1)
+    credential = authorization[1] if len(authorization) == 2 else ""
+    if len(credential) >= 2 and credential[0] == credential[-1] and credential[0] in {'"', "'"}:
+        credential = credential[1:-1].strip()
+    return len(authorization) == 2 and authorization[0].lower() in {"bearer", "basic"} and credential in REDACTED_VALUES
 
 
 def _contains_unredacted_secret(text: str) -> bool:
     if any(pattern.search(text) for pattern in SECRET_PATTERNS):
         return True
-    for pattern in (
-        CREDENTIAL_ASSIGNMENT_PATTERN,
-        AUTHORIZATION_PATTERN,
-        URL_CREDENTIAL_PATTERN,
-    ):
-        for match in pattern.finditer(text):
-            if not _is_redacted(match.group("value")):
-                return True
+    for match in CREDENTIAL_ASSIGNMENT_PATTERN.finditer(text):
+        normalized_key = re.sub(r"[^a-z0-9]", "", match.group("key").lower())
+        if normalized_key in NON_SECRET_TOKEN_KEYS:
+            continue
+        if not _is_redacted(match.group("value")):
+            return True
+    for match in URL_CREDENTIAL_PATTERN.finditer(text):
+        if not _is_redacted(match.group(1)):
+            return True
     return False
 
 
@@ -676,47 +798,10 @@ def _validate_and_measure(patch: bytes) -> tuple[int, int, int]:
         raise ValueError("model patch is not valid UTF-8") from exc
     if _contains_unredacted_secret(text):
         raise ValueError("potential unredacted credential or secret in model patch")
-    for line in text.splitlines():
-        mode: str | None = None
-        if line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ")):
-            mode = line.rsplit(" ", 1)[-1]
-        elif line.startswith("index "):
-            fields = line.split()
-            if len(fields) == 3:
-                mode = fields[-1]
-        if mode is not None and mode not in REGULAR_GIT_MODES:
-            raise ValueError(f"model patch entries must use a regular file mode, got {mode!r}")
-    starts = [match.start() for match in re.finditer(r"(?m)^diff --git ", text)]
-    if not starts or starts[0] != 0:
-        raise ValueError("model patch must contain only complete Git diffs")
-    starts.append(len(text))
-    additions = 0
-    deletions = 0
-    for index in range(len(starts) - 1):
-        chunk = text[starts[index] : starts[index + 1]]
-        lines = chunk.splitlines()
-        old_headers = [line for line in lines if line.startswith("--- ")]
-        new_headers = [line for line in lines if line.startswith("+++ ")]
-        if len(old_headers) != 1 or len(new_headers) != 1:
-            raise ValueError("each Git diff must contain one old and one new path header")
-        old_relative = _header_path(old_headers[0], "--- ", "a")
-        new_relative = _header_path(new_headers[0], "+++ ", "b")
-        relative = old_relative or new_relative
-        if relative is None:
-            raise ValueError("diff cannot have two null paths")
-        expected_old = f"a/{old_relative or relative}"
-        expected_new = f"b/{new_relative or relative}"
-        if lines[0] != f"diff --git {expected_old} {expected_new}":
-            raise ValueError("diff --git header does not match unified path headers")
-        in_hunk = False
-        for line in lines[1:]:
-            if line.startswith("@@ "):
-                in_hunk = True
-            elif in_hunk and line.startswith("+"):
-                additions += 1
-            elif in_hunk and line.startswith("-"):
-                deletions += 1
-    return len(starts) - 1, additions, deletions
+    lines = text.splitlines()
+    file_count = _validate_patch_paths(lines)
+    additions, deletions = _count_patch_changes(lines)
+    return file_count, additions, deletions
 
 
 def _validate_base_and_application(
