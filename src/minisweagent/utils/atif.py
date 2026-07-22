@@ -33,7 +33,9 @@ def export_atif(
 ) -> None:
     """Convert a native mini-SWE trajectory with Harbor and replace the ATIF output atomically."""
     if converter is None:
-        from harbor.agents.installed.mini_swe_agent import convert_mini_swe_agent_to_atif
+        from harbor.agents.installed.mini_swe_agent import (  # pylint: disable=import-error,import-outside-toplevel
+            convert_mini_swe_agent_to_atif,
+        )
 
         converter = convert_mini_swe_agent_to_atif
 
@@ -48,6 +50,21 @@ def export_atif(
         session_id,
     )
     output = trajectory.to_json_dict()
+    source_version = output.get("schema_version")
+    if source_version not in {"ATIF-v1.5", "ATIF-v1.6", "ATIF-v1.7"}:
+        raise ValueError(f"unsupported ATIF schema version: {source_version!r}")
+    if source_version != "ATIF-v1.7":
+        output["schema_version"] = "ATIF-v1.7"
+        extra = output.get("extra")
+        if extra is None:
+            extra = {}
+            output["extra"] = extra
+        if not isinstance(extra, dict):
+            raise ValueError("ATIF extra must be an object")
+        vals = extra.setdefault("vals", {})
+        if not isinstance(vals, dict):
+            raise ValueError("ATIF extra.vals must be an object")
+        vals["source_schema_version"] = source_version
     if patch_metadata is not None and _path_exists(patch_metadata):
         output.setdefault("extra", {}).setdefault("vals", {})["model_patch"] = json.loads(
             _read_bounded_regular(

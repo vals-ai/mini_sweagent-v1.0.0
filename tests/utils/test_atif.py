@@ -57,6 +57,26 @@ def test_export_atif_uses_harbor_converter_and_writes_atomically(tmp_path: Path)
     assert list(destination.parent.iterdir()) == [destination]
 
 
+def test_export_atif_upgrades_converter_output_before_v1_7(tmp_path: Path) -> None:
+    export_atif = load_atif_module().export_atif
+
+    source = tmp_path / "native.json"
+    destination = tmp_path / "atif" / "trajectory.json"
+    source.write_text("{}")
+
+    export_atif(
+        source,
+        destination,
+        "session-123",
+        converter=lambda *_: FakeTrajectory({"schema_version": "ATIF-v1.6"}),
+    )
+
+    assert json.loads(destination.read_text()) == {
+        "schema_version": "ATIF-v1.7",
+        "extra": {"vals": {"source_schema_version": "ATIF-v1.6"}},
+    }
+
+
 def test_export_atif_failure_preserves_existing_file(tmp_path: Path) -> None:
     export_atif = load_atif_module().export_atif
 
