@@ -17,21 +17,15 @@ MAX_NATIVE_SOURCE_BYTES = 2 * MAX_PATCH_BYTES
 MAX_UNTRACKED_LIST_BYTES = 2 * 1024 * 1024
 CHUNK_BYTES = 64 * 1024
 BASE_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-REDACTED_VALUES = frozenset(
-    {"[REDACTED]", "<REDACTED>", "{REDACTED}", "REDACTED", "***", "XXXXX"}
-)
+REDACTED_VALUES = frozenset({"[REDACTED]", "<REDACTED>", "{REDACTED}", "REDACTED", "***", "XXXXX"})
 CREDENTIAL_ASSIGNMENT_PATTERN = re.compile(
     r"(?ix)(?:[\"']?[a-z0-9_.-]*(?:api[_-]?key|secret(?:[_-]?(?:access[_-]?key|key))?|"
     r"access[_-]?token|token|password|passwd|private[_-]?key|credential)"
     r"[a-z0-9_.-]*[\"']?)\s*[:=]\s*"
     r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
 )
-AUTHORIZATION_PATTERN = re.compile(
-    r"(?im)\bauthorization\s*:\s*(?:(?:basic|bearer)\s+)?(?P<value>[^\s,;]+)"
-)
-URL_CREDENTIAL_PATTERN = re.compile(
-    r"(?i)[a-z][a-z0-9+.-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@"
-)
+AUTHORIZATION_PATTERN = re.compile(r"(?im)\bauthorization\s*:\s*(?:(?:basic|bearer)\s+)?(?P<value>[^\s,;]+)")
+URL_CREDENTIAL_PATTERN = re.compile(r"(?i)[a-z][a-z0-9+.-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@")
 SECRET_PATTERNS = (
     re.compile(r"(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"(?i)(?:github_pat_|gh[pousr]_|xox[baprs]-|sk-)[a-z0-9_-]{16,}"),
@@ -370,9 +364,7 @@ def export_model_patch(
             return False
         metadata = _metadata(patch_path, base)
         _validate_base_and_application(repo, base, patch_path)
-        (staging / "model_patch.json").write_text(
-            json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-        )
+        (staging / "model_patch.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         staging.replace(output_dir)
         return True
     finally:
