@@ -82,10 +82,13 @@ def test_main_passes_paths_and_session_id_to_exporter(tmp_path: Path) -> None:
     destination = tmp_path / "atif/trajectory.json"
     calls: list[tuple[Path, Path, str]] = []
 
-    assert module.main(
-        [str(source), str(destination), "task-42"],
-        exporter=lambda *args: calls.append(args),
-    ) == 0
+    assert (
+        module.main(
+            [str(source), str(destination), "task-42"],
+            exporter=lambda *args: calls.append(args),
+        )
+        == 0
+    )
     assert calls == [(source, destination, "task-42")]
 
 
@@ -151,9 +154,7 @@ def test_standalone_bundle_uses_direct_helpers_and_readiness_gate(tmp_path: Path
     assert '"$SCRIPT_DIR/src/minisweagent/utils/atif.py"' in runner
     assert ".harbor-atif-ready" in runner
     assert "python -m minisweagent.utils" not in runner
-    assert '"{problem_statement_path}" "{task_id}" "{model}"' in (
-        bundle / "contract.yaml"
-    ).read_text()
+    assert '"{problem_statement_path}" "{task_id}" "{model}"' in (bundle / "contract.yaml").read_text()
 
 
 def test_wrapper_preserves_agent_status_when_optional_exports_are_unavailable(
