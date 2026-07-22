@@ -24,7 +24,11 @@ CREDENTIAL_ASSIGNMENT_PATTERN = re.compile(
     r"[a-z0-9_.-]*[\"']?)\s*[:=]\s*"
     r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
 )
-AUTHORIZATION_PATTERN = re.compile(r"(?im)\bauthorization\s*:\s*(?:(?:basic|bearer)\s+)?(?P<value>[^\s,;]+)")
+AUTHORIZATION_PATTERN = re.compile(
+    r"(?im)[\"']?(?:proxy[_-]?)?authorization[\"']?\s*[:=]\s*"
+    r"(?:(?:basic|bearer)\s+)?"
+    r"(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
+)
 URL_CREDENTIAL_PATTERN = re.compile(r"(?i)[a-z][a-z0-9+.-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@")
 SECRET_PATTERNS = (
     re.compile(r"(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -59,11 +63,40 @@ def _atomic_write(path: Path, content: bytes) -> None:
 
 
 def capture_base(repo: Path, base_file: Path, output_dir: Path) -> bool:
-    """Capture the exact repository base and remove stale generated output."""
+    """Capture the exact pre-model tree without changing the real index or worktree."""
     base_file.unlink(missing_ok=True)
     _remove_output(output_dir)
     try:
-        base = _run(repo, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+        head = _run(repo, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+        with tempfile.TemporaryDirectory(prefix="model-patch-capture-") as temporary:
+            index_path = Path(temporary) / "index"
+            env = {**os.environ, "GIT_INDEX_FILE": str(index_path)}
+            _run(repo, "read-tree", head, env=env)
+            _run(repo, "add", "-A", "--", ".", env=env)
+            tree = _run(repo, "write-tree", env=env).decode().strip()
+        head_tree = _run(repo, "rev-parse", f"{head}^{{tree}}").decode().strip()
+        if tree == head_tree:
+            base = head
+        else:
+            commit_env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "Vals Model Patch",
+                "GIT_AUTHOR_EMAIL": "model-patch@vals.ai",
+                "GIT_AUTHOR_DATE": "1970-01-01T00:00:00Z",
+                "GIT_COMMITTER_NAME": "Vals Model Patch",
+                "GIT_COMMITTER_EMAIL": "model-patch@vals.ai",
+                "GIT_COMMITTER_DATE": "1970-01-01T00:00:00Z",
+            }
+            base = (
+                subprocess.check_output(
+                    ["git", "-C", str(repo), "commit-tree", tree, "-p", head],
+                    input=b"Model Patch pre-model baseline\n",
+                    stderr=subprocess.DEVNULL,
+                    env=commit_env,
+                )
+                .decode()
+                .strip()
+            )
     except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
         return False
     if BASE_PATTERN.fullmatch(base) is None:
@@ -79,12 +112,14 @@ def _stream_command(
     destination,
     current_size: int,
     allowed_returncodes: tuple[int, ...] = (0,),
+    env: dict[str, str] | None = None,
 ) -> int:
     process = subprocess.Popen(
         command,
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
     assert process.stdout is not None
     try:
@@ -202,6 +237,10 @@ def _header_path(line: str, prefix: str, expected_side: str) -> str | None:
 
 def _is_redacted(value: str) -> bool:
     normalized = value.strip().strip("\"'").upper()
+    for scheme in ("BASIC ", "BEARER "):
+        if normalized.startswith(scheme):
+            normalized = normalized.removeprefix(scheme).strip()
+            break
     return normalized in REDACTED_VALUES
 
 
@@ -313,7 +352,7 @@ def export_model_patch(
     *,
     native_source: Path | None = None,
 ) -> bool:
-    """Stream, validate, and atomically publish a Model Patch bundle."""
+    """Publish the exact final-tree delta from the captured pre-model baseline."""
     _remove_output(output_dir)
     base = base_file.read_text(encoding="utf-8").strip()
     if BASE_PATTERN.fullmatch(base) is None:
@@ -322,15 +361,22 @@ def export_model_patch(
     staging.mkdir(parents=True)
     patch_path = staging / "model.patch"
     try:
-        native_patch = _native_patch(native_source)
-        if native_patch is not None:
-            patch_path.write_bytes(native_patch)
-        else:
+        # Native agent hints are intentionally not trusted: Git snapshots are
+        # the authoritative record of changes made after capture.
+        _ = native_source
+        with tempfile.TemporaryDirectory(prefix="model-patch-export-") as temporary:
+            index_path = Path(temporary) / "index"
+            env = {**os.environ, "GIT_INDEX_FILE": str(index_path)}
+            _run(repo, "read-tree", base, env=env)
+            _run(repo, "add", "-A", "--", ".", env=env)
             with patch_path.open("wb") as patch_file:
-                size = _stream_command(
+                _stream_command(
                     [
                         "git",
+                        "-C",
+                        str(repo),
                         "diff",
+                        "--cached",
                         "--no-ext-diff",
                         "--no-textconv",
                         "--no-renames",
@@ -342,24 +388,8 @@ def export_model_patch(
                     cwd=repo,
                     destination=patch_file,
                     current_size=0,
+                    env=env,
                 )
-                for relative in _safe_untracked_paths(repo):
-                    size = _stream_command(
-                        [
-                            "git",
-                            "diff",
-                            "--no-index",
-                            "--no-ext-diff",
-                            "--no-textconv",
-                            "--",
-                            "/dev/null",
-                            relative,
-                        ],
-                        cwd=repo,
-                        destination=patch_file,
-                        current_size=size,
-                        allowed_returncodes=(0, 1),
-                    )
         if patch_path.stat().st_size == 0:
             return False
         metadata = _metadata(patch_path, base)

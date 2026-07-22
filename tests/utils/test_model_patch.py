@@ -55,11 +55,45 @@ def test_bundle_helper_streams_and_validates_complete_patch(tmp_path: Path, monk
     assert not output_dir.exists()
 
 
+def test_bundle_helper_excludes_pre_model_setup_and_preserves_git_state(tmp_path: Path) -> None:
+    module = load_module()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "config", "user.email", "test@example.com")
+    git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("committed\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "base")
+    (repo / "tracked.txt").write_text("setup\n")
+    (repo / ".mcp.json").write_text("harness\n")
+    base_file = tmp_path / "base"
+    output_dir = tmp_path / "artifacts"
+
+    assert module.capture_base(repo, base_file, output_dir)
+    (repo / "tracked.txt").write_text("model\n")
+    (repo / "created.txt").write_text("new\n")
+    status_before = subprocess.check_output(["git", "-C", repo, "status", "--porcelain=v1", "-z"])
+    index_before = (repo / ".git/index").read_bytes()
+
+    assert module.export_model_patch(repo, output_dir, base_file)
+
+    patch = (output_dir / "model.patch").read_text()
+    assert ".mcp.json" not in patch
+    assert "-setup" in patch
+    assert "+model" in patch
+    assert "created.txt" in patch
+    assert (repo / ".git/index").read_bytes() == index_before
+    assert subprocess.check_output(["git", "-C", repo, "status", "--porcelain=v1", "-z"]) == status_before
+
+
 @pytest.mark.parametrize(
     "unsafe",
     [
         b"safe\0binary",
         b'{"client_api_key":"sk-secret-value-123456"}\n',
+        b'{"Authorization":"Bearer short"}\n',
+        b'{"clientAuthToken":"tiny"}\n',
         b"Authorization: Basic dXNlcjpwYXNzd29yZA==\n",
         b"https://user:password@example.com/private\n",
     ],
@@ -87,6 +121,8 @@ def test_bundle_helper_rejects_binary_and_credentials(tmp_path: Path, unsafe: by
     "redacted",
     [
         "OPENAI_API_KEY=[REDACTED]",
+        '{"apiKey":"[REDACTED]"}',
+        '{"Authorization":"Bearer [REDACTED]"}',
         "Authorization: Bearer [REDACTED]",
         "https://user:<REDACTED>@example.com/private",
     ],
@@ -152,8 +188,6 @@ def test_bundle_helper_discards_subprocess_stderr(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(module.subprocess, "Popen", CompletedProcess)
     module._bounded_command_bytes(["git", "status"], tmp_path, 32)
     with (tmp_path / "patch").open("wb") as destination:
-        module._stream_command(
-            ["git", "diff"], cwd=tmp_path, destination=destination, current_size=0
-        )
+        module._stream_command(["git", "diff"], cwd=tmp_path, destination=destination, current_size=0)
 
     assert stderr_values == [subprocess.DEVNULL, subprocess.DEVNULL]
