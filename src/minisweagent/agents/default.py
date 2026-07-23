@@ -6,7 +6,7 @@ import json
 import logging
 import traceback
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, time
 
 from jinja2 import StrictUndefined, Template
 from model_library.base import QueryResultMetadata
@@ -68,6 +68,12 @@ class DefaultAgent:
         return Template(template, undefined=StrictUndefined).render(**self.get_template_vars())
 
     def add_messages(self, *messages: dict) -> list[dict]:
+        for message in messages:
+            extra = message.get("extra")
+            if not isinstance(extra, dict):
+                extra = {}
+                message["extra"] = extra
+            extra.setdefault("timestamp", time())
         self.logger.debug(messages)  # set log level to debug to see
         self.messages.extend(messages)
         return list(messages)
