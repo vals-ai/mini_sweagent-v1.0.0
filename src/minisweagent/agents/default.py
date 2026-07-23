@@ -42,6 +42,7 @@ class DefaultAgent:
         """See the `AgentConfig` class for permitted keyword arguments."""
         self.config = config_class(**kwargs)
         self.messages: list[dict] = []
+        self._message_timestamps: list[float] = []
         self.model = model
         self.env = env
         self.extra_template_vars = {}
@@ -68,15 +69,22 @@ class DefaultAgent:
         return Template(template, undefined=StrictUndefined).render(**self.get_template_vars())
 
     def add_messages(self, *messages: dict) -> list[dict]:
-        for message in messages:
-            extra = message.get("extra")
-            if not isinstance(extra, dict):
-                extra = {}
-                message["extra"] = extra
-            extra.setdefault("timestamp", time())
         self.logger.debug(messages)  # set log level to debug to see
         self.messages.extend(messages)
+        self._message_timestamps.extend(time() for _ in messages)
         return list(messages)
+
+    def _serialized_messages(self) -> list[dict]:
+        messages: list[dict] = []
+        for index, message in enumerate(self.messages):
+            timestamp = self._message_timestamps[index] if index < len(self._message_timestamps) else time()
+            serialized = dict(message)
+            extra = message.get("extra")
+            serialized_extra = dict(extra) if isinstance(extra, dict) else {}
+            serialized_extra.setdefault("timestamp", timestamp)
+            serialized["extra"] = serialized_extra
+            messages.append(serialized)
+        return messages
 
     def handle_uncaught_exception(self, e: Exception) -> list[dict]:
         return self.add_messages(
@@ -97,6 +105,7 @@ class DefaultAgent:
         self._start_time = perf_counter()
         self.extra_template_vars |= {"task": task, **kwargs}
         self.messages = []
+        self._message_timestamps = []
         self.add_messages(
             self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
             self.model.format_message(role="user", content=self._render_template(self.config.instance_template)),
@@ -171,7 +180,7 @@ class DefaultAgent:
                 "exit_status": last_extra.get("exit_status", ""),
                 "submission": last_extra.get("submission", ""),
             },
-            "messages": self.messages,
+            "messages": self._serialized_messages(),
             "trajectory_format": "mini-swe-agent-1.1",
         }
         return recursive_merge(agent_data, self.model.serialize(), self.env.serialize(), *extra_dicts)
