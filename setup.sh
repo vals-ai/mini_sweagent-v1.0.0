@@ -12,6 +12,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 cd "$SCRIPT_DIR"
 uv sync --locked --no-dev
+bash "$SCRIPT_DIR/install_harbor_atif.sh"
 
 mkdir -p /root/.config/mini-swe-agent /logs/mini_sweagent-v1.0.0
 printf '%s\n' 'MSWEA_CONFIGURED=true' > /root/.config/mini-swe-agent/.env

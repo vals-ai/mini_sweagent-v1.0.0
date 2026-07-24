@@ -1,15 +1,14 @@
 name: mini_sweagent-v1.0.0
 install_cmd: bash setup.sh
-run_cmd: >-
-  mini-sweagent-run-task {problem_statement_path}
-  --config=swebench.yaml
-  --environment-class=local
-  --config=model.model_name={model}
-  --output=/logs/mini_sweagent-v1.0.0/trajectory.json
-  --agent-class=default
-  --exit-immediately
-  --yolo
+run_cmd: bash run.sh "{problem_statement_path}" "{task_id}" "{model}"
 final_output: /logs/mini_sweagent-v1.0.0
+output_artifacts:
+  - path: atif/trajectory.json
+    source: /logs/mini_sweagent-v1.0.0/atif/trajectory.json
+    required: false
+  - path: artifacts/model.patch
+    source: /logs/mini_sweagent-v1.0.0/artifacts/model.patch
+    required: false
 defaults:
   model:
     type: str
